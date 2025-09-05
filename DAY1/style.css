@@ -1,0 +1,33 @@
+.body {
+    font-family: Arial, Helvetica, sans-serif;
+    margin: 0;
+    padding: 0;
+    background: #f4f6f8;
+    color: #333;
+}
+.container {
+    display: flex;
+    height: 200px;
+}
+
+.personal {
+    background: #2c3e50;
+    color:white;
+    padding: 20px;
+    width: 30%; /* occupy the 30% of the container */
+    text-align: center;
+}
+
+.main {
+    flex:1; /* fill all the rest */
+    padding: 30px;
+    background: #fff;
+}
+section {
+    margin-bottom: 20px;
+}
+h2 {
+    border-bottom: 2px solid #ddd;
+    padding-bottom: 5px;
+    margin-bottom: 10px;
+}
