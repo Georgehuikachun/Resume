@@ -5,9 +5,23 @@
     background: #f4f6f8;
     color: #333;
 }
+
+.nav {
+    display: flex;
+    justify-content: space-around;
+    background: #333;
+    padding: 10px;
+}
+
+.nav a {
+    color: white;
+    text-decoration: none;
+}
+
 .container {
     display: flex;
     height: 500px;
+    flex-direction: row;
 }
 
 .personal {
@@ -23,6 +37,26 @@
     padding: 30px;
     background: #fff;
 }
+.skills {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr); /* 1fr,1fr,1fr */
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.skill-item {
+    background: #ecf0f1;
+    padding: 12px;
+    border-radius: 8px;
+    text-align: center;
+    font-weight: bold;
+    transition: background 0.3s;
+}
+
+.skill-item:hover {
+    background: #bdc3c7;
+}
+
 section {
     margin-bottom: 20px;
 }
