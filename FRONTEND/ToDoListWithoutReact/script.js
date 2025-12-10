@@ -21,3 +21,7 @@ addBtn.addEventListener("click", ()=>{
     //clear input
     taskInput.value="";
 });
+
+li.addEventListener("click", ()=>{
+    li.classList.toggle("completed");
+})
