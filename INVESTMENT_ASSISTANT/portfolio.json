@@ -1,0 +1,24 @@
+{
+  "currency": "USD",
+  "target_annual_return_pct": 20,
+  "holdings": [
+    {"symbol": "QQQ",  "shares": 10, "cost_basis": 480.0, "target_weight": 0.30, "note": "纳指100 ETF - 核心成长仓"},
+    {"symbol": "SPY",  "shares": 8,  "cost_basis": 590.0, "target_weight": 0.25, "note": "标普500 ETF - 市场基石"},
+    {"symbol": "SMH",  "shares": 12, "cost_basis": 250.0, "target_weight": 0.15, "note": "半导体 ETF - AI算力主线"},
+    {"symbol": "NVDA", "shares": 15, "cost_basis": 135.0, "target_weight": 0.10, "note": "英伟达 - 进攻仓位"},
+    {"symbol": "MSFT", "shares": 6,  "cost_basis": 430.0, "target_weight": 0.10, "note": "微软 - 质量成长"},
+    {"symbol": "GLD",  "shares": 8,  "cost_basis": 240.0, "target_weight": 0.10, "note": "黄金 ETF - 对冲仓"}
+  ],
+  "watchlist": ["AAPL", "GOOGL", "AMZN", "META", "TSM", "AVGO", "IWM", "XLE"],
+  "rules": {
+    "stop_loss_pct": 0.12,
+    "take_profit_pct": 0.35,
+    "dip_buy_pct": 0.10,
+    "rebalance_drift_pct": 0.05,
+    "sma_short": 20,
+    "sma_long": 50,
+    "rsi_period": 14,
+    "rsi_overbought": 72,
+    "rsi_oversold": 30
+  }
+}
