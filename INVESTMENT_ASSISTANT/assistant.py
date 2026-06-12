@@ -248,8 +248,31 @@ def write_report(config, snapshot, alerts, total_value, failed, dca_rows):
         for a in alerts:
             lines.append(f"- {icon[a['severity']]} **[{a['side']}] {a['symbol']}** — {a['reason']}")
         lines.append("")
+
+        # 把需要执行的提醒翻译成傻瓜式操作步骤
+        steps = []
+        for a in alerts:
+            if a["severity"] == "info":
+                continue
+            if a["symbol"] == "月度定投":
+                for r in dca_rows:
+                    if r["units"]:
+                        code = r["symbol"].replace(".AX", "")
+                        steps.append(f"在券商 App 搜「**{code}**」→ 点 Buy → 股数填 **{r['units']}** "
+                                     f"(约 {cur} {r['amount']:.0f})→ 限价(Limit)填比卖一价(Ask)高 1~2 分 → 提交。")
+            elif a["side"] == "SELL":
+                code = a["symbol"].replace(".AX", "")
+                steps.append(f"在券商 App 搜「**{code}**」→ 点 Sell → 按提醒原因决定卖出数量"
+                             f"(止损建议全部卖出,止盈/超买建议卖出 1/3~1/2)→ 限价填比买一价(Bid)低 1~2 分 → 提交。")
+            else:
+                code = a["symbol"].replace(".AX", "")
+                steps.append(f"(可选)看好的话:搜「**{code}**」→ 点 Buy → 金额自定,分批买入更稳妥。")
+        if steps:
+            lines += ["### 📝 具体怎么操作(照着做即可)", ""]
+            lines += [f"{i}. {s}" for i, s in enumerate(steps, 1)]
+            lines += ["", "> 🟨 黄色的「逢低关注」只是信息提示,不需要操作。", ""]
     else:
-        lines += ["## ✅ 今日无操作信号,继续持有。", ""]
+        lines += ["## ✅ 本周无操作信号,继续持有,什么都不用做。", ""]
 
     if dca_rows:
         amount = config["dca_plan"]["monthly_amount"]
@@ -283,7 +306,14 @@ def write_report(config, snapshot, alerts, total_value, failed, dca_rows):
     if failed:
         lines += ["", f"> ⚠️ 以下标的行情获取失败,本次未分析:{', '.join(failed)}"]
 
-    lines += ["", "---",
+    lines += ["", "## 📖 名词小白解释", "",
+              "- **限价单(Limit)**:你愿意成交的价格。买入时填比卖一价(Ask)高 1~2 分能立刻成交,实际按市场价成交,不会多花钱",
+              "- **RSI**:短期\"温度计\"。70 以上 = 涨过热可能回调;30 以下 = 跌过头可能反弹",
+              "- **200日均线**:过去 200 天的平均价,相当于长期成本线。价格远高于它 = 偏贵;远低于它 = 偏便宜",
+              "- **金叉 / 死叉**:短期均线向上/向下穿过长期均线,分别代表趋势转强/转弱",
+              "- **再平衡**:某只涨多了占比超标,卖一点买别的,把比例调回目标,控制风险",
+              "",
+              "---",
               "> 免责声明:本报告由规则化程序自动生成,仅供参考,不构成投资建议。",
               "> 市场有风险,任何策略都无法保证收益,目标年化 20% 意味着需要承担显著回撤风险。"]
 
