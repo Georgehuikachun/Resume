@@ -83,7 +83,12 @@ def cross_signal(short_ma, long_ma):
 def analyze(config):
     rules = config["rules"]
     holdings = {h["symbol"]: h for h in config["holdings"]}
-    all_symbols = list(holdings) + [s for s in config["watchlist"] if s not in holdings]
+    dca = config.get("dca_plan") or {}
+    dca_symbols = [a["symbol"] for a in dca.get("allocations", [])]
+    all_symbols = list(holdings)
+    for s in config["watchlist"] + dca_symbols:
+        if s not in all_symbols:
+            all_symbols.append(s)
 
     history, failed = fetch_history(all_symbols)
     alerts, snapshot = [], []
@@ -162,18 +167,42 @@ def analyze(config):
 
         snapshot.append(row)
 
+    # 每月定投提醒(月初 remind_window_days 天内触发)
+    dca_rows = []
+    if dca:
+        prices = {r["symbol"]: r["price"] for r in snapshot}
+        for a in dca["allocations"]:
+            amount = dca["monthly_amount"] * a["weight"]
+            price = prices.get(a["symbol"])
+            dca_rows.append({
+                "symbol": a["symbol"],
+                "weight": a["weight"],
+                "amount": round(amount, 2),
+                "price": price,
+                "units": int(amount // price) if price else None,
+                "note": a.get("note", ""),
+            })
+        if datetime.now(timezone.utc).day <= dca.get("remind_window_days", 3):
+            cur = dca.get("currency", config.get("currency", ""))
+            breakdown = ";".join(
+                f"{r['symbol']} {cur}{r['amount']:.0f}" + (f"(约{r['units']}股)" if r["units"] else "")
+                for r in dca_rows)
+            alerts.append(dict(symbol="月度定投", side="BUY", severity="action",
+                reason=f"本月定投日到了!按计划投入 {cur} {dca['monthly_amount']:,}:{breakdown}。买入后记得把成交记录加进 portfolio.json 的 holdings。"))
+
     alerts.sort(key=lambda a: SEVERITY_ORDER[a["severity"]])
-    return snapshot, alerts, total_value, failed
+    return snapshot, alerts, total_value, failed, dca_rows
 
 
-def write_report(config, snapshot, alerts, total_value, failed):
+def write_report(config, snapshot, alerts, total_value, failed, dca_rows):
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    lines = [
-        f"# 投资组合日报 — {now}",
-        "",
-        f"**组合总市值:${total_value:,.2f}** | 目标年化:{config['target_annual_return_pct']}%(目标值,非保证)",
-        "",
-    ]
+    cur = config.get("currency", "")
+    lines = [f"# 投资组合日报 — {now}", ""]
+    if any(r["held"] for r in snapshot):
+        lines.append(f"**组合总市值:{cur} {total_value:,.2f}** | 目标年化:{config['target_annual_return_pct']}%(目标值,非保证)")
+    else:
+        lines.append(f"**当前未持仓,处于定投建仓阶段** | 目标年化:{config['target_annual_return_pct']}%(目标值,非保证)")
+    lines.append("")
 
     if alerts:
         lines += ["## 🔔 操作提醒", ""]
@@ -184,14 +213,26 @@ def write_report(config, snapshot, alerts, total_value, failed):
     else:
         lines += ["## ✅ 今日无操作信号,继续持有。", ""]
 
-    lines += ["## 持仓概览", "",
-              "| 标的 | 现价 | 日涨跌 | 成本 | 盈亏 | 权重/目标 | RSI |",
-              "|---|---|---|---|---|---|---|"]
-    for r in snapshot:
-        if r["held"]:
-            lines.append(
-                f"| {r['symbol']} | {r['price']} | {r['chg_1d_pct']:+.2f}% | {r['cost_basis']} "
-                f"| {r['pnl_pct']:+.2f}% | {r['weight']*100:.1f}%/{r['target_weight']*100:.0f}% | {r['rsi']} |")
+    if dca_rows:
+        amount = config["dca_plan"]["monthly_amount"]
+        lines += [f"## 💰 每月定投计划({cur} {amount:,}/月)", "",
+                  "| 标的 | 占比 | 每月金额 | 现价 | 约可买 | 说明 |",
+                  "|---|---|---|---|---|---|"]
+        for r in dca_rows:
+            price = f"{r['price']}" if r["price"] else "—"
+            units = f"{r['units']} 股" if r["units"] else "—"
+            lines.append(f"| {r['symbol']} | {r['weight']*100:.0f}% | {cur} {r['amount']:.0f} | {price} | {units} | {r['note']} |")
+        lines.append("")
+
+    if any(r["held"] for r in snapshot):
+        lines += ["## 持仓概览", "",
+                  "| 标的 | 现价 | 日涨跌 | 成本 | 盈亏 | 权重/目标 | RSI |",
+                  "|---|---|---|---|---|---|---|"]
+        for r in snapshot:
+            if r["held"]:
+                lines.append(
+                    f"| {r['symbol']} | {r['price']} | {r['chg_1d_pct']:+.2f}% | {r['cost_basis']} "
+                    f"| {r['pnl_pct']:+.2f}% | {r['weight']*100:.1f}%/{r['target_weight']*100:.0f}% | {r['rsi']} |")
 
     lines += ["", "## 观察列表", "",
               "| 标的 | 现价 | 日涨跌 | RSI |", "|---|---|---|---|"]
@@ -211,8 +252,8 @@ def write_report(config, snapshot, alerts, total_value, failed):
 
 def main():
     config = load_config()
-    snapshot, alerts, total_value, failed = analyze(config)
-    write_report(config, snapshot, alerts, total_value, failed)
+    snapshot, alerts, total_value, failed, dca_rows = analyze(config)
+    write_report(config, snapshot, alerts, total_value, failed, dca_rows)
 
     ALERTS_PATH.write_text(json.dumps({
         "generated_at": datetime.now(timezone.utc).isoformat(),

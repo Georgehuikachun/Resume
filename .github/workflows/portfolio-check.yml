@@ -48,10 +48,23 @@ jobs:
             const report = fs.readFileSync('INVESTMENT_ASSISTANT/report.md', 'utf8');
             const date = new Date().toISOString().slice(0, 10);
             const prefix = alerts.has_urgent ? '🟥 紧急' : '🔔';
+            const title = `${prefix} 投资信号 ${date}(${alerts.alert_count} 条)`;
+            // 同一天已发过相同级别的通知就不重复创建(每天最多运行3次)
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'investment-alert',
+              state: 'open',
+              per_page: 50,
+            });
+            if (existing.data.some(i => i.title.startsWith(`${prefix} 投资信号 ${date}`))) {
+              core.info('今日同级别通知已存在,跳过。');
+              return;
+            }
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: `${prefix} 投资信号 ${date}:${alerts.alert_count} 条操作提醒`,
+              title,
               body: report,
               labels: ['investment-alert'],
             });

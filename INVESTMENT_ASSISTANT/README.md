@@ -1,72 +1,72 @@
-# 📈 投资组合管理助手
+# 📈 投资组合管理助手(澳洲定投版)
 
-一个自动化的个人财富管理助手:监控你的持仓和观察列表,在**该卖的时候提醒你卖、该买的时候提醒你买**,并由 Claude AI 像华尔街投资经理一样给出当日点评。通过 GitHub Actions 定时运行,有信号时自动创建 Issue —— 你的手机会收到 GitHub 通知推送。
+一个自动化的个人财富管理助手,为「每月固定金额定投、从零开始建仓」的投资者设计:
 
-## ⚠️ 先说清楚最重要的事
+- 💰 **每月定投提醒**:月初自动提醒你按计划投入,并算好每只 ETF 买多少
+- 🔔 **买卖信号**:建仓后自动监控止损/止盈/趋势/超买超卖,该卖提醒卖、该买提醒买
+- 🧠 **AI 点评**(可选):Claude 像华尔街经理一样点评当日信号
+- 📲 **自动推送**:GitHub Actions 定时运行,有信号自动创建 Issue → 手机 GitHub App 收到通知
 
-- **没有任何工具、经理或策略能"保证"年化 20% 收益。** 20% 在这里是一个进取型**目标**,意味着你必须接受可能 -20% 甚至更大的回撤。
-- 本工具产生的是**规则化信号 + AI 参考意见**,不是投资建议。最终决策永远是你自己的。
-- 历史上长期做到年化 20% 的人(巴菲特约 20%)是世界顶级水平,请管理好预期。
+## 💸 费用说明:核心功能完全免费
 
-## 它能做什么
-
-| 功能 | 说明 |
+| 项目 | 费用 |
 |---|---|
-| 🟥 止损提醒 | 持仓较成本下跌超过 12% → 紧急卖出提醒 |
-| 🟧 止盈提醒 | 浮盈达到 35% → 建议部分锁定利润 |
-| 🟧 趋势信号 | 20/50 日均线金叉提醒买入、死叉提醒卖出 |
-| 🟧 超买超卖 | RSI > 72 提示减仓风险、RSI < 30 提示分批买入机会 |
-| 🟧 再平衡 | 持仓权重偏离目标超过 5% → 提醒调仓 |
-| 🟨 逢低关注 | 观察列表标的从 60 日高点回调超 10% → 提示关注 |
-| 🧠 AI 点评 | Claude 结合宏观环境、行业轮动给出华尔街经理式当日分析(可选)|
-| 📲 自动推送 | 工作日每天 3 次自动检查,有信号就创建 GitHub Issue 通知你 |
+| 行情数据(Yahoo Finance)| 免费 |
+| GitHub Actions 定时运行 + 通知推送 | 免费(公开仓库不限量,私有仓库每月 2000 分钟免费额度,绰绰有余)|
+| 定投提醒、止损止盈、全部买卖信号 | 免费 |
+| AI 点评(`ai_advisor.py`)| 需要 Anthropic API key,按量付费(每天约几美分)。**不配置就自动跳过,其他功能不受影响** |
 
-## 默认组合(请改成你自己的!)
+> 免费替代方案:每次收到通知后,把日报内容粘贴到 claude.ai 对话里让 Claude 点评,用你现有的 Claude 订阅即可,零额外成本。
 
-`portfolio.json` 里预置了一个以 20% 年化为目标的进取型示例组合:
+## ⚠️ 风险提示(必读)
 
-- **30% QQQ**(纳指100)+ **25% SPY**(标普500)— 核心仓
-- **15% SMH**(半导体)+ **10% NVDA** — AI 主线进攻仓
-- **10% MSFT** — 质量成长
-- **10% GLD**(黄金)— 对冲仓
+- **没有任何工具或策略能"保证"年化 20%。** 20% 是进取型目标,长期做到这个水平是巴菲特级别;追求它意味着要接受 -20% 甚至更深的回撤。
+- 本工具输出的是规则化信号和参考意见,**不是投资建议**,决策永远在你。
+- 定投的优势恰恰是平滑波动:跌的时候同样的钱买到更多份额,坚持比择时重要。
 
-**这只是示例。** 打开 `portfolio.json`,把 `holdings` 改成你的真实持仓(股数 `shares`、成本价 `cost_basis`、目标权重 `target_weight`),把 `watchlist` 改成你关注的股票。规则阈值也都在 `rules` 里,可随意调整。
+## 当前方案:每月 AUD 2,000 定投(ASX 上市 ETF)
+
+人在澳洲,直接买澳交所上市的 ETF:澳元计价免换汇、普通券商(CommSec / Stake / SelfWealth / IBKR 等)都能买,照样获得美股科技敞口:
+
+| 标的 | 占比 | 每月 | 是什么 |
+|---|---|---|---|
+| NDQ.AX | 35% | $700 | BetaShares 纳指100 —— 美股科技核心 |
+| IVV.AX | 25% | $500 | iShares 标普500 —— 美股大盘基石 |
+| SEMI.AX | 15% | $300 | BetaShares 全球半导体 —— AI 算力进攻仓(高波动)|
+| VAS.AX | 15% | $300 | Vanguard 澳洲300 —— 本土市场 + 股息抵免(franking credits)|
+| GOLD.AX | 10% | $200 | 黄金 ETF —— 对冲仓 |
+
+这是一个 75% 股票(偏科技)+ 15% 本土 + 10% 黄金的进取型配置。想更稳就提高 IVV/VAS 比例、降低 SEMI;想更激进则反之。全部在 `portfolio.json` 的 `dca_plan` 里改。
+
+## 使用流程
+
+1. **每月初**:收到「月度定投」通知,按金额下单买入。
+2. **买入后**:把成交记录加进 `portfolio.json` 的 `holdings`,例如:
+   ```json
+   {"symbol": "NDQ.AX", "shares": 13, "cost_basis": 52.30, "target_weight": 0.35, "note": "纳指100"}
+   ```
+   (`cost_basis` 填你的平均成本;以后每次加仓后更新股数和均价)
+3. **之后**:助手自动监控你的持仓,触发止损/止盈/趋势信号时推送提醒。
+4. **观察列表**:`watchlist` 里的个股(NVDA、MSFT 等)出现大幅回调或超卖时也会提醒,供你判断要不要单独配置。
 
 ## 快速开始
 
-### 方式一:GitHub 自动推送(推荐)
+### GitHub 自动推送(推荐)
 
-1. 把代码推到 GitHub(本仓库已包含 workflow)。
-2. 在仓库 **Settings → Notifications** 确认你 watch 了本仓库(默认会)。手机装 GitHub App 即可收到推送。
-3. (可选)在 **Settings → Secrets and variables → Actions** 添加 `ANTHROPIC_API_KEY`,开启 Claude AI 点评。
-4. 完成。工作日美东盘前/午盘/收盘后各自动检查一次;也可以在 Actions 页面手动点 **Run workflow** 立即检查。
+1. 代码合并到 main 分支后,workflow 自动在工作日运行 3 次(美东盘前/午盘/收盘后)。
+2. 手机装 GitHub App 并 watch 本仓库,即可收到 Issue 通知。
+3. (可选)Settings → Secrets and variables → Actions 添加 `ANTHROPIC_API_KEY` 开启 AI 点评。
+4. 随时可在 Actions 页面手动 **Run workflow** 立即检查。
 
-### 方式二:本地运行
+### 本地运行
 
 ```bash
 cd INVESTMENT_ASSISTANT
 pip install -r requirements.txt
 python assistant.py          # 生成 report.md + alerts.json
-export ANTHROPIC_API_KEY=sk-ant-...   # 可选
-python ai_advisor.py         # 追加 AI 点评到 report.md
 ```
 
-## 文件说明
-
-```
-INVESTMENT_ASSISTANT/
-├── portfolio.json   # 你的持仓、观察列表、规则阈值(核心配置)
-├── assistant.py     # 信号引擎:拉行情、算指标、生成买卖提醒
-├── ai_advisor.py    # Claude AI 投资经理点评(可选)
-├── report.md        # 每次运行生成的组合日报
-├── alerts.json      # 机器可读的信号(供自动推送判断)
-└── requirements.txt
-.github/workflows/portfolio-check.yml  # 定时任务 + Issue 推送
-```
-
-## 想调整策略?
-
-都在 `portfolio.json` 的 `rules` 里:
+## 规则参数(portfolio.json → rules)
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
@@ -76,8 +76,8 @@ INVESTMENT_ASSISTANT/
 | `rebalance_drift_pct` | 0.05 | 权重偏离多少提醒再平衡 |
 | `sma_short` / `sma_long` | 20 / 50 | 趋势均线参数 |
 | `rsi_overbought` / `rsi_oversold` | 72 / 30 | 超买/超卖阈值 |
+| `dca_plan.remind_window_days` | 3 | 每月前几天内提醒定投 |
 
----
-
-> 数据来源:Yahoo Finance(免费,约 15 分钟延迟,对日线策略足够)。
+> 澳股代码在 Yahoo Finance 带 `.AX` 后缀(如 VAS.AX);美股直接用代码(如 NVDA)。两边可以混用,但建议持仓以同一币种为主,市值统计才准确。
+>
 > 本项目仅供学习参考,不构成投资建议。投资有风险,入市需谨慎。

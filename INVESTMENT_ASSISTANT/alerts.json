@@ -1,44 +1,20 @@
 {
-  "generated_at": "2026-06-12T02:31:50.195100+00:00",
-  "total_value": 28892.33,
-  "alert_count": 10,
+  "generated_at": "2026-06-12T02:45:45.986420+00:00",
+  "total_value": 0,
+  "alert_count": 4,
   "has_urgent": false,
   "alerts": [
     {
-      "symbol": "QQQ",
-      "side": "SELL",
-      "severity": "action",
-      "reason": "达到止盈目标:浮盈 49.4%(目标 35%)。建议部分止盈锁定利润。"
-    },
-    {
-      "symbol": "QQQ",
-      "side": "BUY",
-      "severity": "action",
-      "reason": "权重偏离:当前 24.8% vs 目标 30%,建议再平衡(增持)。"
-    },
-    {
-      "symbol": "SMH",
-      "side": "SELL",
-      "severity": "action",
-      "reason": "达到止盈目标:浮盈 143.8%(目标 35%)。建议部分止盈锁定利润。"
-    },
-    {
-      "symbol": "SMH",
-      "side": "SELL",
-      "severity": "action",
-      "reason": "权重偏离:当前 25.3% vs 目标 15%,建议再平衡(减持)。"
-    },
-    {
       "symbol": "NVDA",
-      "side": "SELL",
-      "severity": "action",
-      "reason": "达到止盈目标:浮盈 51.8%(目标 35%)。建议部分止盈锁定利润。"
+      "side": "BUY",
+      "severity": "info",
+      "reason": "较60日高点 235.47 回调 13.0%,观察列表标的进入逢低关注区。"
     },
     {
-      "symbol": "GLD",
-      "side": "SELL",
-      "severity": "action",
-      "reason": "达到止盈目标:浮盈 61.0%(目标 35%)。建议部分止盈锁定利润。"
+      "symbol": "MSFT",
+      "side": "BUY",
+      "severity": "info",
+      "reason": "较60日高点 460.52 回调 15.2%,观察列表标的进入逢低关注区。"
     },
     {
       "symbol": "GOOGL",
@@ -47,22 +23,10 @@
       "reason": "较60日高点 402.38 回调 11.1%,观察列表标的进入逢低关注区。"
     },
     {
-      "symbol": "AMZN",
+      "symbol": "GOLD.AX",
       "side": "BUY",
       "severity": "info",
-      "reason": "较60日高点 274.99 回调 12.2%,观察列表标的进入逢低关注区。"
-    },
-    {
-      "symbol": "META",
-      "side": "BUY",
-      "severity": "info",
-      "reason": "较60日高点 688.55 回调 17.4%,观察列表标的进入逢低关注区。"
-    },
-    {
-      "symbol": "AVGO",
-      "side": "BUY",
-      "severity": "info",
-      "reason": "较60日高点 481.57 回调 19.9%,观察列表标的进入逢低关注区。"
+      "reason": "较60日高点 64.22 回调 15.1%,观察列表标的进入逢低关注区。"
     }
   ]
 }
