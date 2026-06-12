@@ -2,10 +2,8 @@ name: 投资组合监控
 
 on:
   schedule:
-    # UTC 时间,对应美东盘前(9:30前)、午盘、收盘后各检查一次(工作日)
-    - cron: '0 13 * * 1-5'
-    - cron: '0 17 * * 1-5'
-    - cron: '30 21 * * 1-5'
+    # 每周三 03:00 UTC = 悉尼/墨尔本 13:00(冬令时)/ 14:00(夏令时)
+    - cron: '0 3 * * 3'
   workflow_dispatch: {}
 
 permissions:
@@ -39,21 +37,23 @@ jobs:
           fi
         continue-on-error: true
 
-      - name: 有信号时创建 Issue 推送通知
+      - name: 创建每周仓位指令 Issue
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
             const alerts = JSON.parse(fs.readFileSync('INVESTMENT_ASSISTANT/alerts.json', 'utf8'));
-            if (alerts.alert_count === 0) {
-              core.info('今日无信号,不创建通知。');
-              return;
-            }
             const report = fs.readFileSync('INVESTMENT_ASSISTANT/report.md', 'utf8');
             const date = new Date().toISOString().slice(0, 10);
-            const prefix = alerts.has_urgent ? '🟥 紧急' : '🔔';
-            const title = `${prefix} 投资信号 ${date}(${alerts.alert_count} 条)`;
-            // 同一天已发过相同级别的通知就不重复创建(每天最多运行3次)
+            let title;
+            if (alerts.has_urgent) {
+              title = `🟥 本周仓位指令 ${date}:有紧急操作(${alerts.alert_count} 条)`;
+            } else if (alerts.alert_count > 0) {
+              title = `📋 本周仓位指令 ${date}:${alerts.alert_count} 条待执行`;
+            } else {
+              title = `✅ 本周报告 ${date}:无需调整,继续持有`;
+            }
+            // 同一天不重复创建(手动触发时防止重复)
             const existing = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -61,8 +61,8 @@ jobs:
               state: 'open',
               per_page: 50,
             });
-            if (existing.data.some(i => i.title.startsWith(`${prefix} 投资信号 ${date}`))) {
-              core.info('今日同级别通知已存在,跳过。');
+            if (existing.data.some(i => i.title.includes(date))) {
+              core.info('今日通知已存在,跳过。');
               return;
             }
             await github.rest.issues.create({
