@@ -64,7 +64,36 @@ def compute_indicators(df, rules):
 
     out["high_60d"] = float(close.tail(60).max())
     out["chg_1d_pct"] = (out["price"] / out["prev_price"] - 1) * 100
+
+    sma200 = close.rolling(200).mean().iloc[-1]
+    out["sma200_dev"] = (out["price"] / float(sma200) - 1) if pd.notna(sma200) else None
     return out
+
+
+def tilt_factor(ind):
+    """根据市场情况计算定投倾斜系数:偏贵少买、偏便宜多买。返回 (系数, 原因列表)。"""
+    factor, reasons = 1.0, []
+    dev = ind.get("sma200_dev")
+    if dev is not None:
+        if dev >= 0.20:
+            factor *= 0.5
+            reasons.append(f"高于200日均线{dev*100:.0f}%,显著偏贵→大幅少买")
+        elif dev >= 0.10:
+            factor *= 0.7
+            reasons.append(f"高于200日均线{dev*100:.0f}%,偏贵→少买")
+        elif dev <= -0.15:
+            factor *= 1.5
+            reasons.append(f"低于200日均线{-dev*100:.0f}%,显著偏便宜→大幅加买")
+        elif dev <= -0.05:
+            factor *= 1.3
+            reasons.append(f"低于200日均线{-dev*100:.0f}%,偏便宜→加买")
+    if ind["rsi"] >= 70:
+        factor *= 0.8
+        reasons.append(f"RSI {ind['rsi']:.0f} 超买")
+    elif ind["rsi"] <= 35:
+        factor *= 1.2
+        reasons.append(f"RSI {ind['rsi']:.0f} 接近超卖")
+    return max(0.5, min(1.5, factor)), reasons
 
 
 def cross_signal(short_ma, long_ma):
@@ -91,7 +120,7 @@ def analyze(config):
             all_symbols.append(s)
 
     history, failed = fetch_history(all_symbols)
-    alerts, snapshot = [], []
+    alerts, snapshot, inds = [], [], {}
 
     # 持仓市值与权重
     values = {}
@@ -105,6 +134,7 @@ def analyze(config):
         if sym not in history:
             continue
         ind = compute_indicators(history[sym], rules)
+        inds[sym] = ind
         held = sym in holdings
         h = holdings.get(sym)
 
@@ -167,20 +197,28 @@ def analyze(config):
 
         snapshot.append(row)
 
-    # 每月定投提醒(月初 remind_window_days 天内触发)
+    # 每月定投计划:根据市场情况动态调整每只的买入额(偏贵少买、偏便宜多买)
     dca_rows = []
     if dca:
-        prices = {r["symbol"]: r["price"] for r in snapshot}
+        tilted = []
         for a in dca["allocations"]:
-            amount = dca["monthly_amount"] * a["weight"]
-            price = prices.get(a["symbol"])
+            ind = inds.get(a["symbol"])
+            factor, reasons = tilt_factor(ind) if ind else (1.0, [])
+            tilted.append((a, factor, reasons, ind))
+        total_w = sum(a["weight"] * f for a, f, _, _ in tilted) or 1
+        for a, factor, reasons, ind in tilted:
+            adj_weight = a["weight"] * factor / total_w
+            amount = dca["monthly_amount"] * adj_weight
+            price = round(ind["price"], 2) if ind else None
             dca_rows.append({
                 "symbol": a["symbol"],
                 "weight": a["weight"],
+                "adj_weight": adj_weight,
                 "amount": round(amount, 2),
                 "price": price,
                 "units": int(amount // price) if price else None,
                 "note": a.get("note", ""),
+                "market_note": ";".join(reasons) if reasons else "估值正常,按基准买",
             })
         if datetime.now(timezone.utc).day <= dca.get("remind_window_days", 3):
             cur = dca.get("currency", config.get("currency", ""))
@@ -215,14 +253,16 @@ def write_report(config, snapshot, alerts, total_value, failed, dca_rows):
 
     if dca_rows:
         amount = config["dca_plan"]["monthly_amount"]
-        lines += [f"## 💰 每月定投计划({cur} {amount:,}/月)", "",
-                  "| 标的 | 占比 | 每月金额 | 现价 | 约可买 | 说明 |",
-                  "|---|---|---|---|---|---|"]
+        lines += [f"## 💰 本月定投计划({cur} {amount:,}/月,已按市场情况动态调整)", "",
+                  "| 标的 | 基准 | 本月 | 本月金额 | 现价 | 约可买 | 市场情况 |",
+                  "|---|---|---|---|---|---|---|"]
         for r in dca_rows:
             price = f"{r['price']}" if r["price"] else "—"
             units = f"{r['units']} 股" if r["units"] else "—"
-            lines.append(f"| {r['symbol']} | {r['weight']*100:.0f}% | {cur} {r['amount']:.0f} | {price} | {units} | {r['note']} |")
-        lines.append("")
+            lines.append(
+                f"| {r['symbol']} | {r['weight']*100:.0f}% | **{r['adj_weight']*100:.0f}%** "
+                f"| {cur} {r['amount']:.0f} | {price} | {units} | {r['market_note']} |")
+        lines += ["", "> 调整逻辑:相对自身200日均线明显偏贵的少买、偏便宜的多买(±50%以内),总额不变。", ""]
 
     if any(r["held"] for r in snapshot):
         lines += ["## 持仓概览", "",
