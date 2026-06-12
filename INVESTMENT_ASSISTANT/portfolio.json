@@ -1,0 +1,29 @@
+{
+  "currency": "AUD",
+  "target_annual_return_pct": 20,
+  "holdings": [],
+  "dca_plan": {
+    "monthly_amount": 2000,
+    "currency": "AUD",
+    "remind_window_days": 3,
+    "allocations": [
+      {"symbol": "NDQ.AX",  "weight": 0.35, "note": "BetaShares 纳指100 - 美股科技核心(澳元计价)"},
+      {"symbol": "IVV.AX",  "weight": 0.25, "note": "iShares 标普500 - 美股大盘基石"},
+      {"symbol": "SEMI.AX", "weight": 0.15, "note": "BetaShares 全球半导体 - AI算力进攻仓"},
+      {"symbol": "VAS.AX",  "weight": 0.15, "note": "Vanguard 澳洲300 - 本土市场+股息抵免"},
+      {"symbol": "GOLD.AX", "weight": 0.10, "note": "黄金 ETF - 对冲仓"}
+    ]
+  },
+  "watchlist": ["NVDA", "MSFT", "GOOGL", "AAPL", "TSM", "IOZ.AX", "HACK.AX", "ASIA.AX"],
+  "rules": {
+    "stop_loss_pct": 0.12,
+    "take_profit_pct": 0.35,
+    "dip_buy_pct": 0.10,
+    "rebalance_drift_pct": 0.05,
+    "sma_short": 20,
+    "sma_long": 50,
+    "rsi_period": 14,
+    "rsi_overbought": 72,
+    "rsi_oversold": 30
+  }
+}
