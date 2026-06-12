@@ -1,32 +1,20 @@
 {
-  "generated_at": "2026-06-12T11:01:35.463638+00:00",
-  "total_value": 0,
-  "alert_count": 4,
+  "generated_at": "2026-06-12T15:21:32.160197+00:00",
+  "total_value": 1658.94,
+  "alert_count": 2,
   "has_urgent": false,
   "alerts": [
     {
       "symbol": "NVDA",
       "side": "BUY",
       "severity": "info",
-      "reason": "较60日高点 235.47 回调 13.0%,观察列表标的进入逢低关注区。"
+      "reason": "较60日高点 235.47 回调 12.2%,观察列表标的进入逢低关注区。"
     },
     {
       "symbol": "MSFT",
       "side": "BUY",
       "severity": "info",
-      "reason": "较60日高点 460.52 回调 15.2%,观察列表标的进入逢低关注区。"
-    },
-    {
-      "symbol": "GOOGL",
-      "side": "BUY",
-      "severity": "info",
-      "reason": "较60日高点 402.38 回调 11.1%,观察列表标的进入逢低关注区。"
-    },
-    {
-      "symbol": "GOLD.AX",
-      "side": "BUY",
-      "severity": "info",
-      "reason": "较60日高点 64.22 回调 15.3%,观察列表标的进入逢低关注区。"
+      "reason": "较60日高点 460.52 回调 15.5%,观察列表标的进入逢低关注区。"
     }
   ]
 }

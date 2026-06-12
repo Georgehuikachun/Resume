@@ -1,12 +1,17 @@
 {
   "currency": "AUD",
   "target_annual_return_pct": 20,
-  "holdings": [],
+  "holdings": [
+    {"symbol": "NDQ.AX",  "shares": 9,  "cost_basis": 61.76, "target_weight": 0.35, "note": "纳指100 - 美股科技核心"},
+    {"symbol": "IVV.AX",  "shares": 8,  "cost_basis": 70.06, "target_weight": 0.25, "note": "标普500 - 美股大盘基石"},
+    {"symbol": "GOLD.AX", "shares": 10, "cost_basis": 54.59, "target_weight": 0.10, "note": "黄金 ETF - 对冲仓"}
+  ],
   "dca_plan": {
     "monthly_amount": 2000,
     "currency": "AUD",
     "remind_window_days": 7,
     "min_initial_position": 500,
+    "cash_carryover": 328.78,
     "allocations": [
       {"symbol": "NDQ.AX",  "weight": 0.35, "note": "BetaShares 纳指100 - 美股科技核心(澳元计价)"},
       {"symbol": "IVV.AX",  "weight": 0.25, "note": "iShares 标普500 - 美股大盘基石"},
@@ -15,12 +20,13 @@
       {"symbol": "GOLD.AX", "weight": 0.10, "note": "黄金 ETF - 对冲仓"}
     ]
   },
-  "watchlist": ["NVDA", "MSFT", "GOOGL", "AAPL", "TSM", "IOZ.AX", "HACK.AX", "ASIA.AX"],
+  "watchlist": ["NVDA", "MSFT", "GOOGL", "AAPL", "TSM", "IOZ.AX", "HACK.AX", "ASIA.AX", "VAS.AX", "SEMI.AX"],
   "rules": {
     "stop_loss_pct": 0.12,
     "take_profit_pct": 0.35,
     "dip_buy_pct": 0.10,
     "rebalance_drift_pct": 0.05,
+    "rebalance_alerts": false,
     "sma_short": 20,
     "sma_long": 50,
     "rsi_period": 14,
