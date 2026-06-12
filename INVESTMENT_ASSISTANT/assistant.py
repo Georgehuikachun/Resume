@@ -197,34 +197,70 @@ def analyze(config):
 
         snapshot.append(row)
 
-    # 每月定投计划:根据市场情况动态调整每只的买入额(偏贵少买、偏便宜多买)
+    # 每月定投计划:按市场情况动态调整(偏贵少买、偏便宜多买),
+    # 并遵守 ASX 首次开仓最低金额规则(min_initial_position,默认 500):
+    # 未持仓标的分到的金额低于最低额时,接近的补足到最低额,差太远的本月暂缓开仓。
     dca_rows = []
     if dca:
+        M = dca["monthly_amount"]
+        min_init = dca.get("min_initial_position", 0)
         tilted = []
         for a in dca["allocations"]:
             ind = inds.get(a["symbol"])
             factor, reasons = tilt_factor(ind) if ind else (1.0, [])
-            tilted.append((a, factor, reasons, ind))
-        total_w = sum(a["weight"] * f for a, f, _, _ in tilted) or 1
-        for a, factor, reasons, ind in tilted:
-            adj_weight = a["weight"] * factor / total_w
-            amount = dca["monthly_amount"] * adj_weight
-            price = round(ind["price"], 2) if ind else None
+            tilted.append({"a": a, "ind": ind, "reasons": reasons,
+                           "w": a["weight"] * factor, "held": a["symbol"] in holdings})
+
+        deferred, floored, amounts = set(), set(), {}
+        for _ in range(len(tilted) + 1):
+            free = [i for i in range(len(tilted)) if i not in deferred and i not in floored]
+            budget = M - min_init * len(floored)
+            total_w = sum(tilted[i]["w"] for i in free) or 1
+            amounts = {i: budget * tilted[i]["w"] / total_w for i in free}
+            amounts.update({i: float(min_init) for i in floored})
+            bad = [i for i in free if not tilted[i]["held"] and min_init and amounts[i] < min_init]
+            if not bad:
+                break
+            for i in bad:
+                if amounts[i] < 0.6 * min_init:
+                    deferred.add(i)   # 差太远,本月暂缓开仓
+                else:
+                    floored.add(i)    # 接近最低额,补足到最低额
+            while min_init * len(floored) > M and floored:
+                drop = min(floored, key=lambda i: tilted[i]["w"])
+                floored.discard(drop)
+                deferred.add(drop)
+
+        for i, t in enumerate(tilted):
+            a, ind = t["a"], t["ind"]
+            market_note = ";".join(t["reasons"]) if t["reasons"] else "估值正常,按基准买"
+            if i in deferred:
+                amount, units = 0.0, None
+                market_note += f"。⚠️ 首次开仓需≥{min_init},本月分配额不足→暂缓,资金并入其他标的"
+            else:
+                amount = amounts.get(i, 0.0)
+                units = int(amount // ind["price"]) if ind and ind["price"] else None
+                if i in floored:
+                    market_note += f"。已补足到首次开仓最低额 {min_init}"
             dca_rows.append({
                 "symbol": a["symbol"],
                 "weight": a["weight"],
-                "adj_weight": adj_weight,
+                "adj_weight": amount / M if M else 0,
                 "amount": round(amount, 2),
-                "price": price,
-                "units": int(amount // price) if price else None,
+                "price": round(ind["price"], 2) if ind else None,
+                "units": units,
                 "note": a.get("note", ""),
-                "market_note": ";".join(reasons) if reasons else "估值正常,按基准买",
+                "market_note": market_note,
             })
+
         if datetime.now(timezone.utc).day <= dca.get("remind_window_days", 3):
             cur = dca.get("currency", config.get("currency", ""))
             breakdown = ";".join(
                 f"{r['symbol']} {cur}{r['amount']:.0f}" + (f"(约{r['units']}股)" if r["units"] else "")
-                for r in dca_rows)
+                for r in dca_rows if r["amount"] > 0)
+            skipped = ",".join(r["symbol"] for r in dca_rows if r["amount"] == 0)
+            if skipped:
+                breakdown += f"。{skipped} 本月暂缓(首次开仓需≥{min_init})"
             alerts.append(dict(symbol="月度定投", side="BUY", severity="action",
                 reason=f"本月定投日到了!按计划投入 {cur} {dca['monthly_amount']:,}:{breakdown}。买入后记得把成交记录加进 portfolio.json 的 holdings。"))
 
