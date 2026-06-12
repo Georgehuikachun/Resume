@@ -29,10 +29,14 @@ jobs:
         run: python INVESTMENT_ASSISTANT/assistant.py
 
       - name: AI 投资经理点评(可选,需配置 ANTHROPIC_API_KEY secret)
-        if: ${{ secrets.ANTHROPIC_API_KEY != '' }}
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python INVESTMENT_ASSISTANT/ai_advisor.py
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            python INVESTMENT_ASSISTANT/ai_advisor.py
+          else
+            echo "未配置 ANTHROPIC_API_KEY,跳过 AI 点评(核心功能不受影响)。"
+          fi
         continue-on-error: true
 
       - name: 有信号时创建 Issue 推送通知
