@@ -12,6 +12,7 @@
 """
 
 import json
+import math
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -170,9 +171,9 @@ def analyze(config):
                 alerts.append(dict(symbol=sym, side="SELL", severity="info",
                     reason=f"RSI {ind['rsi']:.0f} 超买(阈值 {rules['rsi_overbought']}),短期回调风险升高,可考虑减仓。"))
 
-            # 再平衡
+            # 再平衡(建仓期可在 rules.rebalance_alerts 关闭,避免误报)
             drift = weight - h["target_weight"]
-            if abs(drift) >= rules["rebalance_drift_pct"]:
+            if rules.get("rebalance_alerts", True) and abs(drift) >= rules["rebalance_drift_pct"]:
                 side = "SELL" if drift > 0 else "BUY"
                 alerts.append(dict(symbol=sym, side=side, severity="action",
                     reason=f"权重偏离:当前 {weight*100:.1f}% vs 目标 {h['target_weight']*100:.0f}%,建议再平衡({'减持' if drift > 0 else '增持'})。"))
@@ -240,8 +241,12 @@ def analyze(config):
             else:
                 amount = amounts.get(i, 0.0)
                 units = int(amount // ind["price"]) if ind and ind["price"] else None
+                # 首次开仓:股数向上取整,确保订单金额 ≥ 最低开仓额(否则券商拒单)
+                if units and not t["held"] and min_init and units * ind["price"] < min_init:
+                    units = math.ceil(min_init / ind["price"])
+                    amount = units * ind["price"]
                 if i in floored:
-                    market_note += f"。已补足到首次开仓最低额 {min_init}"
+                    market_note += f"。已补足到首次开仓最低额 {min_init}(股数向上取整保证订单达标)"
             dca_rows.append({
                 "symbol": a["symbol"],
                 "weight": a["weight"],
