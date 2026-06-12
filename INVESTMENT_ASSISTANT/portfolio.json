@@ -5,7 +5,7 @@
   "dca_plan": {
     "monthly_amount": 2000,
     "currency": "AUD",
-    "remind_window_days": 3,
+    "remind_window_days": 7,
     "allocations": [
       {"symbol": "NDQ.AX",  "weight": 0.35, "note": "BetaShares 纳指100 - 美股科技核心(澳元计价)"},
       {"symbol": "IVV.AX",  "weight": 0.25, "note": "iShares 标普500 - 美股大盘基石"},

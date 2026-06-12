@@ -53,7 +53,7 @@
 
 ### GitHub 自动推送(推荐)
 
-1. 代码合并到 main 分支后,workflow 自动在工作日运行 3 次(美东盘前/午盘/收盘后)。
+1. workflow 每周三 13:00 左右(悉尼时间)自动运行,创建「本周仓位指令」Issue:有调整列出待执行操作,无调整也会告知"继续持有";每月第一个周三附带定投清单。
 2. 手机装 GitHub App 并 watch 本仓库,即可收到 Issue 通知。
 3. (可选)Settings → Secrets and variables → Actions 添加 `ANTHROPIC_API_KEY` 开启 AI 点评。
 4. 随时可在 Actions 页面手动 **Run workflow** 立即检查。
