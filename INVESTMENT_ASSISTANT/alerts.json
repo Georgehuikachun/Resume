@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-12T03:22:50.251649+00:00",
+  "generated_at": "2026-06-12T11:01:35.463638+00:00",
   "total_value": 0,
   "alert_count": 4,
   "has_urgent": false,
@@ -26,7 +26,7 @@
       "symbol": "GOLD.AX",
       "side": "BUY",
       "severity": "info",
-      "reason": "较60日高点 64.22 回调 15.1%,观察列表标的进入逢低关注区。"
+      "reason": "较60日高点 64.22 回调 15.3%,观察列表标的进入逢低关注区。"
     }
   ]
 }
