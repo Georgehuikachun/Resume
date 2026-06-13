@@ -110,6 +110,34 @@ def cross_signal(short_ma, long_ma):
     return None
 
 
+def overnight_signals(config, rules):
+    """美股隔夜涨跌 → 今日 ASX 跟随预判。返回 (alerts, rows)。
+
+    ASX ETF 跟踪美股指数,美股盘后澳股已收盘,次日 ASX 开盘会补上隔夜美股的涨跌。
+    美股大跌 → 今早 ASX 这几只大概率低开,是定投/补仓的便宜入场点;大涨则偏贵可缓。
+    """
+    proxies = config.get("overnight_proxies") or {}
+    threshold = rules.get("overnight_move_pct", 0.015)
+    alerts, rows = [], []
+    for asx, us in proxies.items():
+        try:
+            df = yf.Ticker(us).history(period="5d", interval="1d", auto_adjust=True)
+        except Exception as e:
+            print(f"warning: overnight fetch {us} failed: {e}", file=sys.stderr)
+            continue
+        if df.empty or len(df) < 2:
+            continue
+        chg = float(df["Close"].iloc[-1] / df["Close"].iloc[-2] - 1)
+        rows.append({"asx": asx, "us": us, "chg_pct": round(chg * 100, 2)})
+        if chg <= -threshold:
+            alerts.append(dict(symbol=asx, side="BUY", severity="info",
+                reason=f"隔夜美股{us}下跌 {-chg*100:.1f}%,今日 ASX {asx} 大概率低开 → 若计划买入/补仓,今天是较便宜的入场时机。"))
+        elif chg >= threshold:
+            alerts.append(dict(symbol=asx, side="INFO", severity="info",
+                reason=f"隔夜美股{us}上涨 {chg*100:.1f}%,今日 ASX {asx} 大概率高开 → 偏贵,非必要可缓一两天再买。"))
+    return alerts, rows
+
+
 def analyze(config):
     rules = config["rules"]
     holdings = {h["symbol"]: h for h in config["holdings"]}
@@ -269,11 +297,15 @@ def analyze(config):
             alerts.append(dict(symbol="月度定投", side="BUY", severity="action",
                 reason=f"本月定投日到了!按计划投入 {cur} {dca['monthly_amount']:,}:{breakdown}。买入后记得把成交记录加进 portfolio.json 的 holdings。"))
 
+    # 隔夜美股 → 今日 ASX 跟随信号
+    on_alerts, overnight_rows = overnight_signals(config, rules)
+    alerts.extend(on_alerts)
+
     alerts.sort(key=lambda a: SEVERITY_ORDER[a["severity"]])
-    return snapshot, alerts, total_value, failed, dca_rows
+    return snapshot, alerts, total_value, failed, dca_rows, overnight_rows
 
 
-def write_report(config, snapshot, alerts, total_value, failed, dca_rows):
+def write_report(config, snapshot, alerts, total_value, failed, dca_rows, overnight_rows):
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     cur = config.get("currency", "")
     lines = [f"# 投资组合日报 — {now}", ""]
@@ -347,6 +379,22 @@ def write_report(config, snapshot, alerts, total_value, failed, dca_rows):
     if failed:
         lines += ["", f"> ⚠️ 以下标的行情获取失败,本次未分析:{', '.join(failed)}"]
 
+    if overnight_rows:
+        lines += ["## 🌏 隔夜美股 → 今日 ASX 预判", "",
+                  "(美股昨夜的涨跌,今天 ASX 开盘这几只会跟着补上)", "",
+                  "| 你的标的 | 对应美股 | 隔夜涨跌 | 今日 ASX 开盘预判 |",
+                  "|---|---|---|---|"]
+        for r in overnight_rows:
+            chg = r["chg_pct"]
+            if chg <= -1.5:
+                pred = "大概率低开,便宜→适合买"
+            elif chg >= 1.5:
+                pred = "大概率高开,偏贵→可缓"
+            else:
+                pred = "波动不大,正常"
+            lines.append(f"| {r['asx']} | {r['us']} | {chg:+.2f}% | {pred} |")
+        lines.append("")
+
     lines += ["", "## 📖 名词小白解释", "",
               "- **限价单(Limit)**:你愿意成交的价格。买入时填比卖一价(Ask)高 1~2 分能立刻成交,实际按市场价成交,不会多花钱",
               "- **RSI**:短期\"温度计\"。70 以上 = 涨过热可能回调;30 以下 = 跌过头可能反弹",
@@ -363,13 +411,14 @@ def write_report(config, snapshot, alerts, total_value, failed, dca_rows):
 
 def main():
     config = load_config()
-    snapshot, alerts, total_value, failed, dca_rows = analyze(config)
-    write_report(config, snapshot, alerts, total_value, failed, dca_rows)
+    snapshot, alerts, total_value, failed, dca_rows, overnight_rows = analyze(config)
+    write_report(config, snapshot, alerts, total_value, failed, dca_rows, overnight_rows)
 
     ALERTS_PATH.write_text(json.dumps({
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "total_value": round(total_value, 2),
         "alert_count": len(alerts),
+        "action_count": sum(1 for a in alerts if a["severity"] in ("urgent", "action")),
         "has_urgent": any(a["severity"] == "urgent" for a in alerts),
         "alerts": alerts,
     }, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -2,8 +2,9 @@ name: 投资组合监控
 
 on:
   schedule:
-    # 每周三 03:00 UTC = 悉尼/墨尔本 13:00(冬令时)/ 14:00(夏令时)
-    - cron: '0 3 * * 3'
+    # 每个澳洲交易日早上发报。22:30 UTC = 悉尼 08:30(冬令时AEST)/ 09:30(夏令时AEDT)
+    # 周日~周四 UTC 对应周一~周五悉尼早晨,正好在 ASX 10:00 开盘前,可据隔夜美股决定当天动作
+    - cron: '30 22 * * 0-4'
   workflow_dispatch: {}
 
 permissions:
@@ -37,7 +38,7 @@ jobs:
           fi
         continue-on-error: true
 
-      - name: 创建每周仓位指令 Issue
+      - name: 创建每日仓位报告 Issue
         uses: actions/github-script@v7
         with:
           script: |
@@ -45,13 +46,16 @@ jobs:
             const alerts = JSON.parse(fs.readFileSync('INVESTMENT_ASSISTANT/alerts.json', 'utf8'));
             const report = fs.readFileSync('INVESTMENT_ASSISTANT/report.md', 'utf8');
             const date = new Date().toISOString().slice(0, 10);
+            const actionCount = alerts.action_count || 0;
             let title;
             if (alerts.has_urgent) {
-              title = `🟥 本周仓位指令 ${date}:有紧急操作(${alerts.alert_count} 条)`;
+              title = `🟥 ${date} 紧急操作提醒(${actionCount} 条需执行)`;
+            } else if (actionCount > 0) {
+              title = `📋 ${date} 有 ${actionCount} 条建议操作`;
             } else if (alerts.alert_count > 0) {
-              title = `📋 本周仓位指令 ${date}:${alerts.alert_count} 条待执行`;
+              title = `💡 ${date} 今日情况(仅供参考,无需操作)`;
             } else {
-              title = `✅ 本周报告 ${date}:无需调整,继续持有`;
+              title = `✅ ${date} 一切正常,继续持有`;
             }
             // 同一天不重复创建(手动触发时防止重复)
             const existing = await github.rest.issues.listForRepo({

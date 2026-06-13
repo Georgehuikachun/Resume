@@ -21,12 +21,18 @@
     ]
   },
   "watchlist": ["NVDA", "MSFT", "GOOGL", "AAPL", "TSM", "IOZ.AX", "HACK.AX", "ASIA.AX", "VAS.AX", "SEMI.AX"],
+  "overnight_proxies": {
+    "NDQ.AX": "QQQ",
+    "IVV.AX": "SPY",
+    "SEMI.AX": "SMH"
+  },
   "rules": {
     "stop_loss_pct": 0.12,
     "take_profit_pct": 0.35,
     "dip_buy_pct": 0.10,
     "rebalance_drift_pct": 0.05,
     "rebalance_alerts": false,
+    "overnight_move_pct": 0.015,
     "sma_short": 20,
     "sma_long": 50,
     "rsi_period": 14,
