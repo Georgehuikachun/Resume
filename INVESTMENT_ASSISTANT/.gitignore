@@ -1,2 +1,4 @@
 __pycache__/
 *.pyc
+report.md
+alerts.json
