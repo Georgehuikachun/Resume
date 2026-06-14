@@ -14,6 +14,7 @@
 import json
 import math
 import sys
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -108,6 +109,84 @@ def cross_signal(short_ma, long_ma):
     if prev_above and not now_above:
         return "death"
     return None
+
+
+def fetch_cnn_fear_greed():
+    """尽力获取 CNN 恐惧贪婪指数(0-100)。失败返回 None,不影响其他功能。"""
+    url = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
+    headers = {
+        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                       "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"),
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://edition.cnn.com/markets/fear-and-greed",
+        "Origin": "https://edition.cnn.com",
+    }
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+        fg = data.get("fear_and_greed", {})
+        return round(float(fg["score"])), fg.get("rating", "")
+    except Exception as e:
+        print(f"warning: CNN fear&greed fetch failed: {e}", file=sys.stderr)
+        return None
+
+
+def market_sentiment():
+    """汇总市场情绪指标:VIX 恐慌指数 + CNN 恐惧贪婪指数。返回 (rows, alerts)。
+
+    情绪极端时对长期定投者是反向信号:极度恐慌往往是机会,极度贪婪要谨慎。
+    """
+    rows, alerts = [], []
+
+    # VIX 恐慌指数(华尔街公认的"恐惧温度计")
+    try:
+        vdf = yf.Ticker("^VIX").history(period="1mo", interval="1d", auto_adjust=False)
+        if not vdf.empty:
+            vix = float(vdf["Close"].iloc[-1])
+            vix_avg = float(vdf["Close"].tail(20).mean())
+            if vix >= 30:
+                mood, advice = "高度恐慌", "市场大跌、人心惶惶。对定投者通常是逢低买入的机会,别跟着恐慌卖。"
+            elif vix >= 20:
+                mood, advice = "偏紧张", "市场有压力,波动加大。保持定投节奏,可略偏向多买。"
+            elif vix >= 15:
+                mood, advice = "正常", "情绪平稳,按计划执行即可。"
+            else:
+                mood, advice = "偏亢奋", "市场过于平静乐观,往往酝酿回调。别追高,谨慎。"
+            rows.append({"name": "VIX 恐慌指数", "value": f"{vix:.1f}",
+                         "ref": f"近20日均值 {vix_avg:.1f}", "mood": mood})
+            if vix >= 30:
+                alerts.append(dict(symbol="市场情绪", side="BUY", severity="info",
+                    reason=f"VIX 恐慌指数 {vix:.0f}(高度恐慌)。{advice}"))
+            elif vix < 13:
+                alerts.append(dict(symbol="市场情绪", side="INFO", severity="info",
+                    reason=f"VIX 仅 {vix:.0f}(市场亢奋)。{advice}"))
+    except Exception as e:
+        print(f"warning: VIX fetch failed: {e}", file=sys.stderr)
+
+    # CNN 恐惧贪婪指数(0=极度恐惧, 100=极度贪婪)
+    fg = fetch_cnn_fear_greed()
+    if fg:
+        score, rating = fg
+        cn = {"extreme fear": "极度恐惧", "fear": "恐惧", "neutral": "中性",
+              "greed": "贪婪", "extreme greed": "极度贪婪"}.get(rating.lower(), rating)
+        if score <= 25:
+            advice = "市场极度恐惧——历史上这类时点往往是长期买入的好机会。"
+        elif score >= 75:
+            advice = "市场极度贪婪——容易见顶,别追高,保持纪律。"
+        else:
+            advice = "情绪中性,按计划执行。"
+        rows.append({"name": "CNN 恐惧贪婪指数", "value": f"{score}/100",
+                     "ref": cn, "mood": cn})
+        if score <= 25:
+            alerts.append(dict(symbol="市场情绪", side="BUY", severity="info",
+                reason=f"CNN 恐惧贪婪指数 {score}/100(极度恐惧)。{advice}"))
+        elif score >= 80:
+            alerts.append(dict(symbol="市场情绪", side="INFO", severity="info",
+                reason=f"CNN 恐惧贪婪指数 {score}/100(极度贪婪)。{advice}"))
+
+    return rows, alerts
 
 
 def overnight_signals(config, rules):
@@ -301,11 +380,15 @@ def analyze(config):
     on_alerts, overnight_rows = overnight_signals(config, rules)
     alerts.extend(on_alerts)
 
+    # 市场情绪(VIX + 恐惧贪婪指数)
+    sentiment_rows, sent_alerts = market_sentiment()
+    alerts.extend(sent_alerts)
+
     alerts.sort(key=lambda a: SEVERITY_ORDER[a["severity"]])
-    return snapshot, alerts, total_value, failed, dca_rows, overnight_rows
+    return snapshot, alerts, total_value, failed, dca_rows, overnight_rows, sentiment_rows
 
 
-def write_report(config, snapshot, alerts, total_value, failed, dca_rows, overnight_rows):
+def write_report(config, snapshot, alerts, total_value, failed, dca_rows, overnight_rows, sentiment_rows):
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     cur = config.get("currency", "")
     lines = [f"# 投资组合日报 — {now}", ""]
@@ -379,6 +462,14 @@ def write_report(config, snapshot, alerts, total_value, failed, dca_rows, overni
     if failed:
         lines += ["", f"> ⚠️ 以下标的行情获取失败,本次未分析:{', '.join(failed)}"]
 
+    if sentiment_rows:
+        lines += ["## 📊 市场情绪温度计", "",
+                  "(情绪影响供求和短期走势;对长期定投者,极度恐慌往往是机会,极度贪婪要谨慎)", "",
+                  "| 指标 | 当前 | 参考 | 解读 |", "|---|---|---|---|"]
+        for r in sentiment_rows:
+            lines.append(f"| {r['name']} | **{r['value']}** | {r['ref']} | {r['mood']} |")
+        lines.append("")
+
     if overnight_rows:
         lines += ["## 🌏 隔夜美股 → 今日 ASX 预判", "",
                   "(美股昨夜的涨跌,今天 ASX 开盘这几只会跟着补上)", "",
@@ -401,6 +492,8 @@ def write_report(config, snapshot, alerts, total_value, failed, dca_rows, overni
               "- **200日均线**:过去 200 天的平均价,相当于长期成本线。价格远高于它 = 偏贵;远低于它 = 偏便宜",
               "- **金叉 / 死叉**:短期均线向上/向下穿过长期均线,分别代表趋势转强/转弱",
               "- **再平衡**:某只涨多了占比超标,卖一点买别的,把比例调回目标,控制风险",
+              "- **VIX 恐慌指数**:衡量市场恐惧程度。>30 = 大家很慌(常是买点);<15 = 太乐观(常酝酿回调)",
+              "- **恐惧贪婪指数**:0~100,越低越恐惧、越高越贪婪。极端值是反向参考——别人恐惧时贪婪,别人贪婪时恐惧",
               "",
               "---",
               "> 免责声明:本报告由规则化程序自动生成,仅供参考,不构成投资建议。",
@@ -411,8 +504,8 @@ def write_report(config, snapshot, alerts, total_value, failed, dca_rows, overni
 
 def main():
     config = load_config()
-    snapshot, alerts, total_value, failed, dca_rows, overnight_rows = analyze(config)
-    write_report(config, snapshot, alerts, total_value, failed, dca_rows, overnight_rows)
+    snapshot, alerts, total_value, failed, dca_rows, overnight_rows, sentiment_rows = analyze(config)
+    write_report(config, snapshot, alerts, total_value, failed, dca_rows, overnight_rows, sentiment_rows)
 
     ALERTS_PATH.write_text(json.dumps({
         "generated_at": datetime.now(timezone.utc).isoformat(),
