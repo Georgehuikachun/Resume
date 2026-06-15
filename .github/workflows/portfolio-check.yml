@@ -79,4 +79,5 @@ jobs:
               title,
               body: report,
               labels: ['investment-alert'],
+              assignees: [context.repo.owner],
             });
