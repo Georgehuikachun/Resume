@@ -49,6 +49,9 @@ jobs:
 
       - name: 创建仓位报告 Issue(每日两次)
         uses: actions/github-script@v7
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         with:
           script: |
             const fs = require('fs');
@@ -79,7 +82,7 @@ jobs:
               core.info(`${date} ${slot} 通知已存在,跳过。`);
               return;
             }
-            await github.rest.issues.create({
+            const newIssue = await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title,
@@ -87,3 +90,22 @@ jobs:
               labels: ['investment-alert'],
               assignees: [context.repo.owner],
             });
+
+            // Telegram 弹窗推送(仅发标题+链接,不含金额;凭据来自用户的 GitHub Secret)
+            const tgToken = process.env.TELEGRAM_BOT_TOKEN;
+            const tgChat = process.env.TELEGRAM_CHAT_ID;
+            if (tgToken && tgChat) {
+              const text = `${title}\n点开查看完整报告 → ${newIssue.data.html_url}`;
+              try {
+                const r = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ chat_id: tgChat, text, disable_web_page_preview: false }),
+                });
+                core.info(`Telegram 推送状态:${r.status}`);
+              } catch (e) {
+                core.warning(`Telegram 推送失败(不影响报告):${e}`);
+              }
+            } else {
+              core.info('未配置 Telegram Secret,跳过弹窗推送。');
+            }
