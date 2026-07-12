@@ -37,9 +37,18 @@ echo "[2/6] 安装 Xray-core (官方脚本)..."
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 
 echo "[3/6] 生成密钥与 ID..."
+# 注意:不同 Xray 版本 `xray x25519` 的标签文案不一样
+# (老版本 "Private key:" / "Public key:",新版本 "PrivateKey:" / "Password:")。
+# 这里按顺序抓 base64url 密钥本身(43 字符),第 1 个是私钥、第 2 个是公钥,
+# 不依赖标签文案,避免因版本升级导致 privateKey 为空。
 KEYS="$(xray x25519)"
-PRIVATE_KEY="$(echo "${KEYS}" | awk '/Private/{print $3}')"
-PUBLIC_KEY="$(echo "${KEYS}"  | awk '/Public/{print $3}')"
+PRIVATE_KEY="$(printf '%s\n' "${KEYS}" | grep -oE '[A-Za-z0-9_-]{43}' | sed -n 1p)"
+PUBLIC_KEY="$(printf '%s\n' "${KEYS}"  | grep -oE '[A-Za-z0-9_-]{43}' | sed -n 2p)"
+if [[ -z "${PRIVATE_KEY}" || -z "${PUBLIC_KEY}" ]]; then
+  echo "错误: 无法从 'xray x25519' 输出中解析密钥,原始输出如下:" >&2
+  echo "${KEYS}" >&2
+  exit 1
+fi
 UUID="$(xray uuid)"
 SHORT_ID="$(openssl rand -hex 8)"
 
