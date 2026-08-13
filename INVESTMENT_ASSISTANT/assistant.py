@@ -14,12 +14,14 @@
 import json
 import math
 import sys
+import time
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import pandas as pd
-import yfinance as yf
+import requests
 
 BASE_DIR = Path(__file__).parent
 CONFIG_PATH = BASE_DIR / "portfolio.json"
@@ -34,13 +36,60 @@ def load_config():
         return json.load(f)
 
 
-def fetch_history(symbols, period="1y"):
+YF_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{}"
+YF_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"),
+    "Accept": "application/json",
+}
+
+
+def yahoo_history(symbol, period="1y", interval="1d", retries=3):
+    """直接调用 Yahoo chart API 拉日线历史,返回含 Close 列的 DataFrame。
+
+    不走 yfinance 的 curl_cffi 传输层——它在部分网络环境(代理后)会被重置连接,
+    导致整份报告没有行情。直接用 requests 更稳,依赖也更少。
+    遇到限流(429/5xx)按指数退避重试。
+    """
+    url = YF_CHART_URL.format(quote(symbol, safe=""))
+    params = {"range": period, "interval": interval}
+    last_err = None
+    for attempt in range(retries):
+        try:
+            resp = requests.get(url, params=params, headers=YF_HEADERS, timeout=30)
+            if resp.status_code in (429, 500, 502, 503, 504):
+                last_err = f"HTTP {resp.status_code}"
+                time.sleep(2 ** attempt)
+                continue
+            resp.raise_for_status()
+            result = (resp.json().get("chart") or {}).get("result")
+            if not result:
+                return pd.DataFrame()
+            data = result[0]
+            stamps = data.get("timestamp") or []
+            indicators = data.get("indicators") or {}
+            closes = ((indicators.get("quote") or [{}])[0] or {}).get("close") or []
+            adj = ((indicators.get("adjclose") or [{}])[0] or {}).get("adjclose")
+            series = adj if adj else closes
+            if not stamps or not series:
+                return pd.DataFrame()
+            n = min(len(stamps), len(series))
+            df = pd.DataFrame({"Close": series[:n]},
+                              index=pd.to_datetime(stamps[:n], unit="s"))
+            return df.dropna()
+        except Exception as e:  # 网络/解析异常都重试
+            last_err = e
+            time.sleep(2 ** attempt)
+    raise RuntimeError(f"Yahoo 拉取 {symbol} 失败: {last_err}")
+
+
+def fetch_history(symbols, period="1y", min_bars=60):
     """逐个拉取日线历史,返回 {symbol: DataFrame}。失败的标的跳过并记录。"""
     data, failed = {}, []
     for sym in symbols:
         try:
-            df = yf.Ticker(sym).history(period=period, interval="1d", auto_adjust=True)
-            if df.empty or len(df) < 60:
+            df = yahoo_history(sym, period=period)
+            if df.empty or len(df) < min_bars:
                 failed.append(sym)
                 continue
             data[sym] = df
@@ -142,7 +191,7 @@ def market_sentiment():
 
     # VIX 恐慌指数(华尔街公认的"恐惧温度计")
     try:
-        vdf = yf.Ticker("^VIX").history(period="1mo", interval="1d", auto_adjust=False)
+        vdf = yahoo_history("^VIX", period="1mo")
         if not vdf.empty:
             vix = float(vdf["Close"].iloc[-1])
             vix_avg = float(vdf["Close"].tail(20).mean())
@@ -200,7 +249,7 @@ def overnight_signals(config, rules):
     alerts, rows = [], []
     for asx, us in proxies.items():
         try:
-            df = yf.Ticker(us).history(period="5d", interval="1d", auto_adjust=True)
+            df = yahoo_history(us, period="5d")
         except Exception as e:
             print(f"warning: overnight fetch {us} failed: {e}", file=sys.stderr)
             continue
