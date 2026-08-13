@@ -361,12 +361,26 @@ def analyze(config):
     if dca:
         M = dca["monthly_amount"]
         min_init = dca.get("min_initial_position", 0)
+        # 分配权重 = 缺口权重 × 估值倾斜。
+        # 缺口:按目标权重算出"加完这笔钱后各该值多少",已经超配的标的缺口为 0,
+        # 新钱只补欠配的——这样不用卖出就能把比例调回目标(省资本利得税)。
+        future_total = total_value + M
         tilted = []
         for a in dca["allocations"]:
-            ind = inds.get(a["symbol"])
+            sym = a["symbol"]
+            ind = inds.get(sym)
             factor, reasons = tilt_factor(ind) if ind else (1.0, [])
+            gap = max(0.0, a["weight"] * future_total - values.get(sym, 0.0))
+            gap_w = gap / future_total
+            if gap <= 0:
+                reasons.append(f"已超配(现 {values.get(sym, 0)/total_value*100:.0f}% vs 目标 "
+                               f"{a['weight']*100:.0f}%)→本月停买,让比例回落")
             tilted.append({"a": a, "ind": ind, "reasons": reasons,
-                           "w": a["weight"] * factor, "held": a["symbol"] in holdings})
+                           "w": gap_w * factor, "held": sym in holdings})
+        # 若全部已达标(无缺口),退回按目标权重平均买入
+        if sum(t["w"] for t in tilted) <= 0:
+            for t in tilted:
+                t["w"] = t["a"]["weight"]
 
         deferred, floored, amounts = set(), set(), {}
         for _ in range(len(tilted) + 1):
