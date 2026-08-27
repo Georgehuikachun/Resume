@@ -99,6 +99,15 @@ def fetch_history(symbols, period="1y", min_bars=60):
     return data, failed
 
 
+def is_valid_price(x):
+    """价格必须是有限实数。NaN 在 Python 里是"真值",单靠 if 判断挡不住,
+    行情源偶尔返回空价格时会一路传到 int() 把整份报告炸掉,所以显式校验。"""
+    try:
+        return x is not None and math.isfinite(float(x))
+    except (TypeError, ValueError):
+        return False
+
+
 def compute_indicators(df, rules):
     close = df["Close"]
     out = {}
@@ -284,13 +293,18 @@ def analyze(config):
     for sym, h in holdings.items():
         if sym in history:
             ind = compute_indicators(history[sym], rules)
-            values[sym] = ind["price"] * h["shares"]
+            if is_valid_price(ind["price"]):
+                values[sym] = ind["price"] * h["shares"]
     total_value = sum(values.values())
 
     for sym in all_symbols:
         if sym not in history:
             continue
         ind = compute_indicators(history[sym], rules)
+        if not is_valid_price(ind["price"]):
+            print(f"warning: {sym} 行情价格无效,本次跳过", file=sys.stderr)
+            failed.append(sym)
+            continue
         inds[sym] = ind
         held = sym in holdings
         h = holdings.get(sym)
@@ -410,9 +424,10 @@ def analyze(config):
                 market_note += f"。⚠️ 首次开仓需≥{min_init},本月分配额不足→暂缓,资金并入其他标的"
             else:
                 amount = amounts.get(i, 0.0)
-                units = int(amount // ind["price"]) if ind and ind["price"] else None
+                price_ok = ind is not None and is_valid_price(ind["price"])
+                units = int(amount // ind["price"]) if price_ok and amount > 0 else None
                 # 首次开仓:股数向上取整,确保订单金额 ≥ 最低开仓额(否则券商拒单)
-                if units and not t["held"] and min_init and units * ind["price"] < min_init:
+                if units and price_ok and not t["held"] and min_init and units * ind["price"] < min_init:
                     units = math.ceil(min_init / ind["price"])
                     amount = units * ind["price"]
                 if i in floored:
