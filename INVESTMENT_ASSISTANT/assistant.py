@@ -14,12 +14,14 @@
 import json
 import math
 import sys
+import time
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import pandas as pd
-import yfinance as yf
+import requests
 
 BASE_DIR = Path(__file__).parent
 CONFIG_PATH = BASE_DIR / "portfolio.json"
@@ -34,13 +36,60 @@ def load_config():
         return json.load(f)
 
 
-def fetch_history(symbols, period="1y"):
+YF_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{}"
+YF_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"),
+    "Accept": "application/json",
+}
+
+
+def yahoo_history(symbol, period="1y", interval="1d", retries=3):
+    """直接调用 Yahoo chart API 拉日线历史,返回含 Close 列的 DataFrame。
+
+    不走 yfinance 的 curl_cffi 传输层——它在部分网络环境(代理后)会被重置连接,
+    导致整份报告没有行情。直接用 requests 更稳,依赖也更少。
+    遇到限流(429/5xx)按指数退避重试。
+    """
+    url = YF_CHART_URL.format(quote(symbol, safe=""))
+    params = {"range": period, "interval": interval}
+    last_err = None
+    for attempt in range(retries):
+        try:
+            resp = requests.get(url, params=params, headers=YF_HEADERS, timeout=30)
+            if resp.status_code in (429, 500, 502, 503, 504):
+                last_err = f"HTTP {resp.status_code}"
+                time.sleep(2 ** attempt)
+                continue
+            resp.raise_for_status()
+            result = (resp.json().get("chart") or {}).get("result")
+            if not result:
+                return pd.DataFrame()
+            data = result[0]
+            stamps = data.get("timestamp") or []
+            indicators = data.get("indicators") or {}
+            closes = ((indicators.get("quote") or [{}])[0] or {}).get("close") or []
+            adj = ((indicators.get("adjclose") or [{}])[0] or {}).get("adjclose")
+            series = adj if adj else closes
+            if not stamps or not series:
+                return pd.DataFrame()
+            n = min(len(stamps), len(series))
+            df = pd.DataFrame({"Close": series[:n]},
+                              index=pd.to_datetime(stamps[:n], unit="s"))
+            return df.dropna()
+        except Exception as e:  # 网络/解析异常都重试
+            last_err = e
+            time.sleep(2 ** attempt)
+    raise RuntimeError(f"Yahoo 拉取 {symbol} 失败: {last_err}")
+
+
+def fetch_history(symbols, period="1y", min_bars=60):
     """逐个拉取日线历史,返回 {symbol: DataFrame}。失败的标的跳过并记录。"""
     data, failed = {}, []
     for sym in symbols:
         try:
-            df = yf.Ticker(sym).history(period=period, interval="1d", auto_adjust=True)
-            if df.empty or len(df) < 60:
+            df = yahoo_history(sym, period=period)
+            if df.empty or len(df) < min_bars:
                 failed.append(sym)
                 continue
             data[sym] = df
@@ -48,6 +97,15 @@ def fetch_history(symbols, period="1y"):
             print(f"warning: fetch {sym} failed: {e}", file=sys.stderr)
             failed.append(sym)
     return data, failed
+
+
+def is_valid_price(x):
+    """价格必须是有限实数。NaN 在 Python 里是"真值",单靠 if 判断挡不住,
+    行情源偶尔返回空价格时会一路传到 int() 把整份报告炸掉,所以显式校验。"""
+    try:
+        return x is not None and math.isfinite(float(x))
+    except (TypeError, ValueError):
+        return False
 
 
 def compute_indicators(df, rules):
@@ -142,7 +200,7 @@ def market_sentiment():
 
     # VIX 恐慌指数(华尔街公认的"恐惧温度计")
     try:
-        vdf = yf.Ticker("^VIX").history(period="1mo", interval="1d", auto_adjust=False)
+        vdf = yahoo_history("^VIX", period="1mo")
         if not vdf.empty:
             vix = float(vdf["Close"].iloc[-1])
             vix_avg = float(vdf["Close"].tail(20).mean())
@@ -200,7 +258,7 @@ def overnight_signals(config, rules):
     alerts, rows = [], []
     for asx, us in proxies.items():
         try:
-            df = yf.Ticker(us).history(period="5d", interval="1d", auto_adjust=True)
+            df = yahoo_history(us, period="5d")
         except Exception as e:
             print(f"warning: overnight fetch {us} failed: {e}", file=sys.stderr)
             continue
@@ -235,13 +293,18 @@ def analyze(config):
     for sym, h in holdings.items():
         if sym in history:
             ind = compute_indicators(history[sym], rules)
-            values[sym] = ind["price"] * h["shares"]
+            if is_valid_price(ind["price"]):
+                values[sym] = ind["price"] * h["shares"]
     total_value = sum(values.values())
 
     for sym in all_symbols:
         if sym not in history:
             continue
         ind = compute_indicators(history[sym], rules)
+        if not is_valid_price(ind["price"]):
+            print(f"warning: {sym} 行情价格无效,本次跳过", file=sys.stderr)
+            failed.append(sym)
+            continue
         inds[sym] = ind
         held = sym in holdings
         h = holdings.get(sym)
@@ -312,12 +375,26 @@ def analyze(config):
     if dca:
         M = dca["monthly_amount"]
         min_init = dca.get("min_initial_position", 0)
+        # 分配权重 = 缺口权重 × 估值倾斜。
+        # 缺口:按目标权重算出"加完这笔钱后各该值多少",已经超配的标的缺口为 0,
+        # 新钱只补欠配的——这样不用卖出就能把比例调回目标(省资本利得税)。
+        future_total = total_value + M
         tilted = []
         for a in dca["allocations"]:
-            ind = inds.get(a["symbol"])
+            sym = a["symbol"]
+            ind = inds.get(sym)
             factor, reasons = tilt_factor(ind) if ind else (1.0, [])
+            gap = max(0.0, a["weight"] * future_total - values.get(sym, 0.0))
+            gap_w = gap / future_total
+            if gap <= 0:
+                reasons.append(f"已超配(现 {values.get(sym, 0)/total_value*100:.0f}% vs 目标 "
+                               f"{a['weight']*100:.0f}%)→本月停买,让比例回落")
             tilted.append({"a": a, "ind": ind, "reasons": reasons,
-                           "w": a["weight"] * factor, "held": a["symbol"] in holdings})
+                           "w": gap_w * factor, "held": sym in holdings})
+        # 若全部已达标(无缺口),退回按目标权重平均买入
+        if sum(t["w"] for t in tilted) <= 0:
+            for t in tilted:
+                t["w"] = t["a"]["weight"]
 
         deferred, floored, amounts = set(), set(), {}
         for _ in range(len(tilted) + 1):
@@ -347,9 +424,10 @@ def analyze(config):
                 market_note += f"。⚠️ 首次开仓需≥{min_init},本月分配额不足→暂缓,资金并入其他标的"
             else:
                 amount = amounts.get(i, 0.0)
-                units = int(amount // ind["price"]) if ind and ind["price"] else None
+                price_ok = ind is not None and is_valid_price(ind["price"])
+                units = int(amount // ind["price"]) if price_ok and amount > 0 else None
                 # 首次开仓:股数向上取整,确保订单金额 ≥ 最低开仓额(否则券商拒单)
-                if units and not t["held"] and min_init and units * ind["price"] < min_init:
+                if units and price_ok and not t["held"] and min_init and units * ind["price"] < min_init:
                     units = math.ceil(min_init / ind["price"])
                     amount = units * ind["price"]
                 if i in floored:
