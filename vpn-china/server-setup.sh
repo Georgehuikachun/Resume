@@ -17,8 +17,11 @@ set -euo pipefail
 
 # ---- 可调参数 ----
 PORT="${PORT:-443}"                       # 监听端口,443 最不易被怀疑
-DEST="${DEST:-www.microsoft.com:443}"     # 伪装目标(必须是支持 TLSv1.3 + H2 的大站)
-SERVER_NAMES="${SERVER_NAMES:-www.microsoft.com}"  # SNI,需与 DEST 一致
+# 伪装目标必须支持 TLS1.3 + H2 并能稳定完成握手转发。
+# 注意:不要用 www.microsoft.com —— 实测无法完成 REALITY 握手转发,
+# 会导致所有客户端(即使参数完全正确)一律连接失败。
+DEST="${DEST:-www.apple.com:443}"
+SERVER_NAMES="${SERVER_NAMES:-www.apple.com}"      # SNI,需与 DEST 一致
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "请用 root 运行: sudo bash $0" >&2
